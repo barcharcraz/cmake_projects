@@ -1,0 +1,21 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+
+PROJECT(deps)
+INCLUDE(ExternalProject)
+
+SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX "./base")
+
+ExternalProject_Add(zlib
+	URL http://zlib.net/zlib-1.2.8.tar.gz
+	CMAKE_ARGS
+		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+)
+ExternalProject_Add(assimp
+	URL https://github.com/assimp/assimp/archive/v3.2.tar.gz
+	DEPENDS zlib
+	CMAKE_ARGS
+		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+		-DASSIMP_BUILD_ASSIMP_TOOLS=OFF
+		-DASSIMP_BUILD_TESTS=OFF
+		-DASSIMP_INSTALL_PDB=OFF
+)
