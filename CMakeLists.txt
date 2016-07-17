@@ -2,6 +2,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
 
 #INCLUDE('cmake/HunterGate.cmake')
 INCLUDE(ExternalProject)
+INCLUDE(ProcessorCount)
 PROJECT(deps)
 
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX "./base")
@@ -24,11 +25,13 @@ IF(${DEPS_BUILD_SHARED_MT} OR ${DEPS_BUILD_STATIC_MT})
 ENDIF()
 ExternalProject_Add(zlib
 	URL http://zlib.net/zlib-1.2.8.tar.gz
+	URL_HASH SHA256=36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
 )
 ExternalProject_Add(assimp
 	URL https://github.com/assimp/assimp/archive/v3.2.tar.gz
+	URL_HASH SHA256=187F825C563E84B1B17527A4DA0351AA3D575DFD696A9D204AE4BB19EE7DF94A
 	DEPENDS zlib
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
@@ -50,16 +53,26 @@ ExternalProject_Add(glfw
 )
 ExternalProject_Add(libtiff
 	URL http://download.osgeo.org/libtiff/tiff-4.0.6.zip
+	URL_HASH SHA256=B0447585C647DF0404472811042DF02360A958E9AFB806C73D44FE2F163885A2
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
 )
 ExternalProject_Add(libpng
 	URL http://download.sourceforge.net/libpng/lpng1622.zip
+	URL_HASH SHA256=B45E908B7EC679752DDA491F94083FD8408632FC58BC16F9E53D39705C94460B
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
 )
+ExternalProject_Add(libjpeg-turbo
+	URL https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.0.tar.gz
+	URL_HASH SHA256=232280E1C9C3E6A1DE95FE99BE2F7F9C0362EE08F3E3E48D50EE83B9A2ED955B
+	CMAKE_ARGS
+		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+		-DWITH_SIMD=OFF
+)
 ExternalProject_Add(OpenEXR
 	URL http://download.savannah.nongnu.org/releases/openexr/openexr-2.2.0.tar.gz
+	URL_HASH SHA256=36A012F6C43213F840CE29A8B182700F6CF6B214BEA0D5735594136B44914231
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
 		-DILMBASE_PACKAGE_PREFIX=<INSTALL_DIR>
@@ -67,28 +80,80 @@ ExternalProject_Add(OpenEXR
 )
 ExternalProject_Add(IlmBase
 	URL http://download.savannah.nongnu.org/releases/openexr/ilmbase-2.2.0.tar.gz
+	URL_HASH SHA256=ECF815B60695555C1FBC73679E84C7C9902F4E8FAA6E8000D2F905B8B86CEDC7
 	CMAKE_ARGS
 		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
 )
-#SET(B2_ARGS STRING variant=$<JOIN:$<$<CONFIG:Debug>:debug> $<$<NOT:$<CONFIG:Debug>>:release>,$<COMMA>>
-#	link=$<JOIN:$<$<TARGET_PROPERTY:DEPS_BUILD_STATIC>:static> $<$<TARGET_PROPERTY:DEPS_BUILD_SHARED>:shared>,$<COMMA>>
-#	runtime-link
-SET(B2_ARGS $<JOIN: $<$<CONFIG:Debug>:b2.exe stage --stagedir=<BINARY_DIR> variant=debug link=shared runtime-link=shared>
-						   $<$<NOT:$<CONFIG:Debug>>:b2.exe stage --stagedir=<BINARY_DIR> variant=release link=shared runtime-link=shared>,
-						    & >)
+ExternalProject_Add(fmtlib
+	URL https://github.com/fmtlib/fmt/archive/3.0.0.tar.gz
+	URL_HASH SHA256=F075DB25588166D028BD26B931A89B96F2A29F039DFE7C310D235797221C96A1
+	CMAKE_ARGS
+		-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+)
+ProcessorCount(N)
+SET(B2_ARGS_TEMPLATE
+[=[$<JOIN:$<$<CONFIG:Debug>:./b2.exe -j ${N} install --prefix=<INSTALL_DIR> address-model=64 @B2_OPTIONS@ variant=debug link=@B2_LINK_TYPE@ runtime-link=@B2_RUNTIME_LINK_TYPE@> $<$<NOT:$<CONFIG:Debug>>:./b2.exe -j ${N} install --prefix=<INSTALL_DIR> address-model=64 variant=release link=@B2_LINK_TYPE@ runtime-link=@B2_RUNTIME_LINK_TYPE@>, & >]=])
+SET(B2_OPTIONS --without-python)
 ExternalProject_Add(Boost
 	URL https://sourceforge.net/projects/boost/files/boost/1.61.0/boost_1_61_0.7z
 	URL_HASH SHA256=fa1c34862b7ba8674ed6e064a14667a11830c6252f702d9458451834b74f7815
-	UPDATE_COMMAND ""
-	DOWNLOAD_COMMAND ""
-	#CONFIGURE_COMMAND cmd /C cd <SOURCE_DIR> & bootstrap.bat
-	CONFIGURE_COMMAND cmd /C echo "${B2_ARGS}"
-	BUILD_COMMAND cmd /C cd <SOURCE_DIR> & ${B2_ARGS}
-	#BUILD_COMMAND cmd /C cd <SOURCE_DIR> & b2.exe stage --stagedir=<BINARY_DIR>
-	INSTALL_COMMAND cmd /C cd <SOURCE_DIR> & b2.exe install --stagedir=<BINARY_DIR> --prefix=<INSTALL_DIR>
-	LOG_CONFIGURE ON
-	LOG_BUILD ON
+	CONFIGURE_COMMAND ""
+	INSTALL_COMMAND ""
+	BUILD_COMMAND ""
+	LOG_DOWNLOAD ON
+	
 )
+ExternalProject_Add_Step(Boost B2_CONFIGURE
+	WORKING_DIRECTORY <SOURCE_DIR>
+	COMMAND bootstrap.bat
+	USES_TERMINAL ON
+	DEPENDEES DOWNLOAD
+)
+if(DEPS_BUILD_SHARED_MD)
+	set(B2_LINK_TYPE shared)
+	set(B2_RUNTIME_LINK_TYPE shared)
+	string(CONFIGURE ${B2_ARGS_TEMPLATE} B2_ARGS_TMP)
+	ExternalProject_Add_Step(Boost B2_SHARED_MD_STAGE
+		WORKING_DIRECTORY <SOURCE_DIR>
+		COMMAND powershell -Command "${B2_ARGS_TMP}"
+		USES_TERMINAL OFF
+		DEPENDEES B2_CONFIGURE
+	)
+endif()
+if(DEPS_BUILD_SHARED_MT)
+	set(B2_LINK_TYPE shared)
+	set(B2_RUNTIME_LINK_TYPE static)
+	string(CONFIGURE ${B2_ARGS_TEMPLATE} B2_ARGS_TMP)
+	ExternalProject_Add_Step(Boost B2_SHARED_MT_STAGE
+		WORKING_DIRECTORY <SOURCE_DIR>
+		COMMAND powershell -Command "${B2_ARGS_TMP}"
+		USES_TERMINAL OFF
+		DEPENDEES B2_CONFIGURE
+	)
+endif()
+if(DEPS_BUILD_STATIC_MD)
+	set(B2_LINK_TYPE static)
+	set(B2_RUNTIME_LINK_TYPE shared)
+	string(CONFIGURE ${B2_ARGS_TEMPLATE} B2_ARGS_TMP)
+	ExternalProject_Add_Step(Boost B2_STATIC_MD_STAGE
+		WORKING_DIRECTORY <SOURCE_DIR>
+		COMMAND powershell -Command "${B2_ARGS_TMP}"
+		USES_TERMINAL OFF
+		DEPENDEES B2_CONFIGURE
+	)
+endif()
+if(DEPS_BUILD_STATIC_MT)
+	set(B2_LINK_TYPE static)
+	set(B2_RUNTIME_LINK_TYPE static)
+	string(CONFIGURE ${B2_ARGS_TEMPLATE} B2_ARGS_TMP)
+	ExternalProject_Add_Step(Boost B2_STATIC_MT_STAGE
+		WORKING_DIRECTORY <SOURCE_DIR>
+		COMMAND powershell -Command "${B2_ARGS_TMP}"
+		USES_TERMINAL OFF
+		DEPENDEES B2_CONFIGURE
+	)
+endif()
+
 ExternalProject_Add(OpenImageIO
 	GIT_REPOSITORY https://github.com/OpenImageIO/oiio.git
 	CMAKE_ARGS
